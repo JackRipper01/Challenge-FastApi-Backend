@@ -1,5 +1,5 @@
 from app.core.config import settings
-from app.models.user import User
+from app.models import user  
 from app.db.session import Base
 import asyncio
 from logging.config import fileConfig
