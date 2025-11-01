@@ -1,5 +1,6 @@
+import app.models
 from app.core.config import settings
-from app.models import user  
+from app.models import user, post, comment
 from app.db.session import Base
 import asyncio
 from logging.config import fileConfig
@@ -18,7 +19,6 @@ config = context.config
 # This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-
 # add your model's MetaData object here
 # for 'autogenerate' support
 # from myapp import mymodel

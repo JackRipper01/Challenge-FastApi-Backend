@@ -17,6 +17,9 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     is_active: bool = Column(Boolean, default=True)
     is_superuser: bool = Column(Boolean, default=False)
 
-    # Relationship to posts, defined later for incremental migrations
-    # posts = relationship("Post", back_populates="owner")
-    # comments = relationship("Comment", back_populates="owner")
+    # One-to-many relationship: User has many Posts
+    posts = relationship("Post", back_populates="owner",
+                         cascade="all, delete-orphan")
+    # One-to-many relationship: User has many Comments
+    comments = relationship(
+        "Comment", back_populates="owner", cascade="all, delete-orphan")

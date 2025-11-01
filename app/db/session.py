@@ -17,6 +17,7 @@ async_session_maker = async_sessionmaker(
 
 Base = declarative_base()
 
+import app.models
 
 async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
     """

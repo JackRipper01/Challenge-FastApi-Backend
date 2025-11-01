@@ -1,8 +1,7 @@
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
-from app.api.routes import users, auth
-# , posts, comments, tags
+from app.api.routes import users, auth, posts, comments
 from app.core.middleware import request_logging_middleware
 
 
@@ -23,8 +22,7 @@ app = FastAPI(
 
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/users", tags=["Users"])
-# app.include_router(posts.router, prefix="/posts", tags=["Posts"])
-# app.include_router(comments.router, prefix="/comments", tags=["Comments"])
-# app.include_router(tags.router, prefix="/tags", tags=["Tags"])
+app.include_router(posts.router, prefix="/posts", tags=["Posts"])
+app.include_router(comments.router, prefix="/comments", tags=["Comments"])
 
 app.middleware("http")(request_logging_middleware)
