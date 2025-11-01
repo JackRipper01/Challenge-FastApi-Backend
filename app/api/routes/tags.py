@@ -13,6 +13,7 @@ from app.models.comment import Comment
 from app.schemas.tag import TagCreate, TagUpdate, TagInDB
 from app.schemas.post import PostInDB
 from app.core.security import get_current_active_user, get_current_active_superuser
+from app.utils.pagination import PaginatedResponse, paginate
 
 router = APIRouter()
 
@@ -43,7 +44,7 @@ async def create_tag(
     return db_tag
 
 
-@router.get("/", response_model=List[TagInDB])
+@router.get("/", response_model=PaginatedResponse[TagInDB])
 async def read_tags(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_active_user),
@@ -52,7 +53,7 @@ async def read_tags(
     include_deleted: bool = False
 ):
     """
-    Retrieves a list of all tags. Requires authentication.
+    Retrieves a paginated list of all tags. Requires authentication.
     By default, only non-deleted tags are returned. Superusers can
     set 'include_deleted=true' to see all tags, including soft-deleted ones.
     """
@@ -67,12 +68,7 @@ async def read_tags(
     if not include_deleted:
         query = query.filter(Tag.is_deleted == False)
 
-    result = await db.execute(
-        query
-        .offset(skip).limit(limit)
-    )
-    tags = result.scalars().all()
-    return tags
+    return await paginate(db, query, skip, limit)
 
 
 @router.get("/{tag_id}", response_model=TagInDB)

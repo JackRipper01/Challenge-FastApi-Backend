@@ -1,6 +1,4 @@
-from typing import List
-
-from typing import List, Optional  
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -9,6 +7,7 @@ from app.db.session import get_async_db
 from app.schemas.user import UserCreate, UserUpdate, UserInDB
 from app.models.user import User
 from app.core.security import get_current_active_superuser, get_password_hash, get_current_active_user
+from app.utils.pagination import PaginatedResponse, paginate
 
 router = APIRouter()
 
@@ -43,7 +42,7 @@ async def create_user(
     return db_user
 
 
-@router.get("/", response_model=List[UserInDB])
+@router.get("/", response_model=PaginatedResponse[UserInDB])
 async def read_users(
     skip: int = 0,
     limit: int = 100,
@@ -53,7 +52,7 @@ async def read_users(
     include_deleted: bool = False
 ):
     """
-    Retrieves a list of all non-deleted users. Requires superuser privileges.
+    Retrieves a paginated list of all non-deleted users. Requires superuser privileges.
     Superusers can set 'include_deleted=true' to see all users, including soft-deleted ones.
     """
     query = select(User)
@@ -69,13 +68,7 @@ async def read_users(
     if not include_deleted:
         query = query.filter(User.is_deleted == False)
 
-    result = await db.execute(
-        query
-        .offset(skip)
-        .limit(limit)
-    )
-    users = result.scalars().all()
-    return users
+    return await paginate(db, query, skip, limit)
 
 
 @router.get("/{user_id}", response_model=UserInDB)

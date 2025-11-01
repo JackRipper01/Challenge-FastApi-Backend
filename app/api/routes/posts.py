@@ -11,6 +11,7 @@ from app.models.user import User
 from app.models.comment import Comment
 from app.schemas.post import PostCreate, PostUpdate, PostInDB
 from app.core.security import get_current_active_user, get_current_active_superuser
+from app.utils.pagination import PaginatedResponse, paginate
 
 router = APIRouter()
 
@@ -42,7 +43,7 @@ async def create_post(
     return fully_loaded_post
 
 
-@router.get("/", response_model=List[PostInDB])
+@router.get("/", response_model=PaginatedResponse[PostInDB])
 async def read_posts(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_active_user),
@@ -51,7 +52,7 @@ async def read_posts(
     include_deleted: bool = False
 ):
     """
-    Retrieves a list of all posts. Requires authentication.
+    Retrieves a paginated list of all posts. Requires authentication.
     Includes owner, comments (with comment owners), and tags data.
     By default, only non-deleted posts are returned. Superusers can
     set 'include_deleted=true' to see all posts, including soft-deleted ones.
@@ -76,12 +77,7 @@ async def read_posts(
     if not include_deleted:
         query = query.filter(Post.is_deleted == False)
 
-    result = await db.execute(
-        query
-        .offset(skip).limit(limit)
-    )
-    posts = result.scalars().unique().all()
-    return posts
+    return await paginate(db, query, skip, limit)
 
 
 @router.get("/{post_id}", response_model=PostInDB)

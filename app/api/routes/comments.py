@@ -11,6 +11,7 @@ from app.models.post import Post
 from app.models.user import User
 from app.schemas.comment import CommentCreate, CommentUpdate, CommentInDB
 from app.core.security import get_current_active_user, get_current_active_superuser
+from app.utils.pagination import PaginatedResponse, paginate
 
 router = APIRouter()
 
@@ -52,7 +53,7 @@ async def create_comment(
     return fully_loaded_comment
 
 
-@router.get("/", response_model=List[CommentInDB])
+@router.get("/", response_model=PaginatedResponse[CommentInDB])
 async def read_comments(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_active_user),
@@ -62,7 +63,7 @@ async def read_comments(
     limit: int = 100
 ):
     """
-    Retrieves a list of all comments, optionally filtered by post_id.
+    Retrieves a paginated list of all comments, optionally filtered by post_id.
     By default, only non-deleted comments are returned. Superusers can
     set 'include_deleted=true' to see all comments.
     """
@@ -83,11 +84,7 @@ async def read_comments(
     if post_id:
         query = query.filter(Comment.post_id == post_id)
 
-    result = await db.execute(
-        query.offset(skip).limit(limit)
-    )
-    comments = result.scalars().unique().all()
-    return comments
+    return await paginate(db, query, skip, limit)
 
 
 @router.get("/{comment_id}", response_model=CommentInDB)
