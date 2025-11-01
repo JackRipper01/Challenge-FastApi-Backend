@@ -10,7 +10,7 @@ from app.models.comment import Comment
 from app.models.post import Post
 from app.models.user import User
 from app.schemas.comment import CommentCreate, CommentUpdate, CommentInDB
-from app.core.security import get_current_active_user
+from app.core.security import get_current_active_user, get_current_active_superuser
 
 router = APIRouter()
 
@@ -25,7 +25,6 @@ async def create_comment(
     Creates a new comment on a post. Requires authentication.
     The current authenticated user will be set as the owner.
     """
-    # Verify post exists and is not deleted
     post_result = await db.execute(
         select(Post).filter(Post.id == comment_in.post_id,
                             Post.is_deleted == False)
@@ -42,7 +41,15 @@ async def create_comment(
     db.add(db_comment)
     await db.commit()
     await db.refresh(db_comment)
-    return db_comment
+
+    # Re-query to eagerly load owner for response
+    result = await db.execute(
+        select(Comment)
+        .options(selectinload(Comment.owner))
+        .filter(Comment.id == db_comment.id)
+    )
+    fully_loaded_comment = result.scalar_one()
+    return fully_loaded_comment
 
 
 @router.get("/", response_model=List[CommentInDB])
@@ -50,25 +57,35 @@ async def read_comments(
     db: AsyncSession = Depends(get_async_db),
     current_user: User = Depends(get_current_active_user),
     post_id: Optional[int] = None,
+    include_deleted: bool = False,
     skip: int = 0,
-    limit: int = 100  # Default limit for non-paginated list
+    limit: int = 100
 ):
     """
-    Retrieves a list of all comments, optionally filtered by post_id. Requires authentication.
-    Includes owner data.
+    Retrieves a list of all comments, optionally filtered by post_id.
+    By default, only non-deleted comments are returned. Superusers can
+    set 'include_deleted=true' to see all comments.
     """
     query = (
         select(Comment)
         .options(selectinload(Comment.owner))
-        .filter(Comment.is_deleted == False)
     )
+
+    if include_deleted and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only superusers can view deleted comments."
+        )
+
+    if not include_deleted:
+        query = query.filter(Comment.is_deleted == False)
+
     if post_id:
         query = query.filter(Comment.post_id == post_id)
 
     result = await db.execute(
-        query.offset(skip).limit(limit)  # Manual limit/offset for now
+        query.offset(skip).limit(limit)
     )
-    # .unique() needed when loading collections
     comments = result.scalars().unique().all()
     return comments
 
@@ -77,16 +94,27 @@ async def read_comments(
 async def read_comment(
     comment_id: int,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    include_deleted: bool = False
 ):
     """
     Retrieves a specific comment by ID. Requires authentication.
-    Includes owner data.
+    By default, only non-deleted comments are returned. Superusers can
+    set 'include_deleted=true' to retrieve a deleted comment.
     """
+    query = select(Comment).options(selectinload(Comment.owner))
+
+    if include_deleted and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only superusers can view deleted comments."
+        )
+
+    if not include_deleted:
+        query = query.filter(Comment.is_deleted == False)
+
     result = await db.execute(
-        select(Comment)
-        .options(selectinload(Comment.owner))
-        .filter(Comment.id == comment_id, Comment.is_deleted == False)
+        query.filter(Comment.id == comment_id)
     )
     comment = result.scalar_one_or_none()
     if comment is None:
@@ -125,7 +153,15 @@ async def update_comment(
     db.add(db_comment)
     await db.commit()
     await db.refresh(db_comment)
-    return db_comment
+
+    # Re-query to eagerly load owner for response
+    result = await db.execute(
+        select(Comment)
+        .options(selectinload(Comment.owner))
+        .filter(Comment.id == db_comment.id)
+    )
+    fully_loaded_comment = result.scalar_one()
+    return fully_loaded_comment
 
 
 @router.delete("/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)

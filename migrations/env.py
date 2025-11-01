@@ -1,6 +1,6 @@
 import app.models
 from app.core.config import settings
-from app.models import user, post, comment
+from app.models import user, post, comment , tag
 from app.db.session import Base
 import asyncio
 from logging.config import fileConfig

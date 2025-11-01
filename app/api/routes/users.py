@@ -1,5 +1,6 @@
 from typing import List
 
+from typing import List, Optional  
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -7,7 +8,7 @@ from sqlalchemy import select
 from app.db.session import get_async_db
 from app.schemas.user import UserCreate, UserUpdate, UserInDB
 from app.models.user import User
-from app.core.security import get_current_active_superuser, get_password_hash
+from app.core.security import get_current_active_superuser, get_password_hash, get_current_active_user
 
 router = APIRouter()
 
@@ -16,14 +17,12 @@ router = APIRouter()
 async def create_user(
     user_in: UserCreate,
     db: AsyncSession = Depends(get_async_db),
-    # Only superusers can create users
     current_user: User = Depends(get_current_active_superuser)
 ):
     """
     Creates a new user in the system. Requires superuser privileges.
     The password will be hashed before storage.
     """
-    # Check if a user with this email already exists
     existing_user = await db.execute(select(User).filter(User.email == user_in.email))
     if existing_user.scalar_one_or_none():
         raise HTTPException(
@@ -49,15 +48,29 @@ async def read_users(
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_async_db),
-    # Only superusers can list all users
-    current_user: User = Depends(get_current_active_superuser)
+    # Superusers can list all users
+    current_user: User = Depends(get_current_active_superuser),
+    include_deleted: bool = False
 ):
     """
     Retrieves a list of all non-deleted users. Requires superuser privileges.
+    Superusers can set 'include_deleted=true' to see all users, including soft-deleted ones.
     """
+    query = select(User)
+
+    # Permission check for include_deleted
+    if include_deleted and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only superusers can view deleted users."
+        )
+
+    # Apply soft-delete filter if not including deleted
+    if not include_deleted:
+        query = query.filter(User.is_deleted == False)
+
     result = await db.execute(
-        select(User)
-        .filter(User.is_deleted == False)
+        query
         .offset(skip)
         .limit(limit)
     )
@@ -69,16 +82,30 @@ async def read_users(
 async def read_user(
     user_id: int,
     db: AsyncSession = Depends(get_async_db),
-    current_user: User = Depends(get_current_active_superuser)
+    # Superusers can retrieve any user
+    current_user: User = Depends(get_current_active_superuser),
+    include_deleted: bool = False
 ):
     """
     Retrieves a specific user by ID. Requires superuser privileges.
-    Only retrieves non-deleted users.
+    By default, only non-deleted users are retrieved. Superusers can
+    set 'include_deleted=true' to retrieve a soft-deleted user.
     """
+    query = select(User)
+
+    # Permission check for include_deleted
+    if include_deleted and not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only superusers can view deleted users."
+        )
+
+    # Apply soft-delete filter if not including deleted
+    if not include_deleted:
+        query = query.filter(User.is_deleted == False)
+
     result = await db.execute(
-        select(User)
-        # Soft-delete filter
-        .filter(User.id == user_id, User.is_deleted == False)
+        query.filter(User.id == user_id)
     )
     user = result.scalar_one_or_none()
     if user is None:
@@ -92,7 +119,6 @@ async def update_user(
     user_id: int,
     user_in: UserUpdate,
     db: AsyncSession = Depends(get_async_db),
-    # Only superusers can update users for now
     current_user: User = Depends(get_current_active_superuser)
 ):
     """
@@ -140,7 +166,7 @@ async def delete_user(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    db_user.is_deleted = True  # Set the soft-delete flag
+    db_user.is_deleted = True
     db.add(db_user)
     await db.commit()
     return

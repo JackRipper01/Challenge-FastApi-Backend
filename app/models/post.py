@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 
 from app.db.session import Base
 from app.db.base import TimestampMixin, SoftDeleteMixin
+from app.models.tag import post_tag_association
 
 class Post(Base, TimestampMixin, SoftDeleteMixin):
     """
@@ -19,4 +20,6 @@ class Post(Base, TimestampMixin, SoftDeleteMixin):
     owner = relationship("User", back_populates="posts")
     # One-to-many relationship: Post has many Comments
     comments = relationship("Comment", back_populates="post", cascade="all, delete-orphan")
-    
+    # Many-to-many relationship: Post has many Tags
+    tags = relationship(
+        "Tag", secondary=post_tag_association, back_populates="posts")

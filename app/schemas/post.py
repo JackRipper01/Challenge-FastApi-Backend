@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.user import UserInDB
 from app.schemas.comment import CommentInDB
+from app.schemas.tag import TagInDB
 
 
 class PostBase(BaseModel):
@@ -50,6 +51,7 @@ class PostInDB(PostBase):
 
     owner: Optional[UserInDB] = None
     comments: List[CommentInDB] = []
+    tags: List[TagInDB] = []
 
     model_config = {
         "from_attributes": True
