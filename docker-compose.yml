@@ -1,0 +1,47 @@
+version: '3.9' 
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: fastcrud_db 
+    environment:
+      POSTGRES_USER: ${DB_USER:-fastcrud_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fastcrud_password}
+      POSTGRES_DB: ${DB_NAME:-fastcrud_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      # Persist database data to a named volume, preventing data loss on container removal
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      # This is crucial for race conditions where the app might start before the DB is fully initialized.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s # Check every 5 seconds
+      timeout: 5s # Wait up to 5 seconds for a response
+      retries: 5 # Retry 5 times before considering the service unhealthy
+
+  app:
+    build: .
+    container_name: fastcrud_app 
+    # This ensures the database schema is always up-to-date when the app container starts.
+    command: sh -c "alembic upgrade head && uvicorn app.api.main:app --host 0.0.0.0 --port 8000"
+    volumes:
+      # Mount the local project directory into the container.
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      # DATABASE_URL is updated to use the 'db' service name instead of 'localhost'
+      # since 'db' is the hostname for the PostgreSQL container within the Docker network.
+      DATABASE_URL: "postgresql+asyncpg://${DB_USER:-fastcrud_user}:${DB_PASSWORD:-fastcrud_password}@db:5432/${DB_NAME:-fastcrud_db}"
+      SECRET_KEY: ${SECRET_KEY} # Loaded from the host's .env file
+      ALGORITHM: ${ALGORITHM}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+    depends_on:
+      # The app container will not start until the 'db' service is healthy (based on its healthcheck).
+      db:
+        condition: service_healthy
+
+volumes:
+  # Define the named volume for PostgreSQL data persistence
+  pg_data:
